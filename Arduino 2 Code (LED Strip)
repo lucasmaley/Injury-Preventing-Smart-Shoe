@@ -1,0 +1,133 @@
+#include <Adafruit_NeoPixel.h>
+#define LED_PIN    5
+#define LED_COUNT 43
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+uint32_t green = strip.Color(0, 255, 0);
+uint32_t yellow = strip.Color(255, 255, 0);
+uint32_t blue = strip.Color(0, 0, 255);
+uint32_t red = strip.Color(255, 0, 0);
+uint32_t white = strip.Color(255, 255, 255);
+
+const int buttonPin = A7;
+const int potPin = A0;
+const int piezoPin = A6;
+const int buttonPin2 = 4;
+boolean piezoBool = true;
+//boolean buttonBool = true;
+boolean colorBool = true;
+int buttonState = 3;
+int blackButtonState = 1;
+unsigned long timer = 0;
+unsigned long timer2 = 0;
+unsigned long timer3 = 0;
+int piezoMin = 2000;
+void setup() {
+  Serial.begin(9600);
+  strip.begin();           
+  strip.show();  
+  pinMode(buttonPin2, INPUT_PULLUP);  
+  strip.setBrightness(50);
+}
+
+void loop() {
+  int buttonRead = digitalRead(buttonPin2);
+ /* int piezoRead = analogRead(piezoPin);
+  piezoMin = 2000;
+  if (piezoRead < piezoMin)
+      piezoMin = piezoRead;
+      
+  if (millis() - timer > 3000){
+    Serial.print(piezoMin);
+    Serial.print(" . ");
+    Serial.println(piezoBool);
+    timer = millis();
+    if (piezoMin < 100){
+      if (piezoBool == true)
+          piezoBool = false;
+        else 
+          piezoBool = true;
+   }
+  }*/
+  
+ 
+  if (millis() - timer2 > 10){
+    timer2 = millis();
+  //  if (piezoBool == 0){
+        if (buttonRead == 0){
+          if (blackButtonState == 1)
+            blackButtonState == 2;
+          else if (blackButtonState == 2)
+            blackButtonState == 3;
+          else
+            blackButtonState = 1;
+        }
+      if (blackButtonState == 2) {
+         getButtonColor();
+         strip.show();
+      }
+      else if (blackButtonState == 3)
+        blink();
+    else{
+      strip.clear();
+      strip.show();
+    }
+   //}
+  }
+}
+
+void getButtonColor(){
+  int buttonValue = analogRead(buttonPin);
+  if (buttonValue > 960 && buttonValue < 990)
+    buttonState = 1;
+  if (buttonValue > 500 && buttonValue < 530)
+    buttonState = 2;
+  if (buttonValue > 115 && buttonValue < 145)
+    buttonState = 3;
+  if (buttonValue > 755 && buttonValue < 785)
+    buttonState = 4;
+  if (buttonValue > 595 && buttonValue < 620)
+    buttonState = 5;
+  if (buttonState == 1){ 
+    for(int i = 0; i < 43; i ++){
+      strip.setPixelColor(i, green);
+  }
+  }
+  if (buttonState == 2){ 
+    for(int i = 0; i < 43; i ++){
+      strip.setPixelColor(i, yellow);
+  }
+  }
+  if (buttonState == 3){ 
+    for(int i = 0; i < 43; i ++){
+      strip.setPixelColor(i, blue);
+  }
+  }
+  if (buttonState == 4){ 
+    for(int i = 0; i < 43; i ++){
+      strip.setPixelColor(i, red);
+  }
+  }
+  if (buttonState == 5){ 
+    for(int i = 0; i < 43; i ++){
+      strip.setPixelColor(i, white);
+  }
+  }
+}
+void blink(){
+  int timeLength;
+  int potValue = analogRead(potPin);
+  timeLength = map(potValue, 0, 1023, 150, 2000);
+      if (millis() - timer3 > timeLength){
+        timer3 = millis();
+        if (colorBool == true){
+          colorBool = false;
+          getButtonColor();
+          strip.show();
+        }
+        else{
+          colorBool = true;
+          strip.clear();
+          strip.show();
+        }
+      }
+}
