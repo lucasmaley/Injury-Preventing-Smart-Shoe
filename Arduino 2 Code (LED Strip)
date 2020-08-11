@@ -49,18 +49,23 @@ void loop() {
    }
   }*/
   
- 
-  if (millis() - timer2 > 10){
+  
+  if (millis() - timer2 > 200){
     timer2 = millis();
   //  if (piezoBool == 0){
         if (buttonRead == 0){
+          Serial.print(buttonRead);
+          Serial.print("   ");
+          Serial.println(blackButtonState);
+
           if (blackButtonState == 1)
-            blackButtonState == 2;
+            blackButtonState = 2;
           else if (blackButtonState == 2)
-            blackButtonState == 3;
+            blackButtonState = 3;
           else
             blackButtonState = 1;
         }
+    }
       if (blackButtonState == 2) {
          getButtonColor();
          strip.show();
@@ -72,7 +77,6 @@ void loop() {
       strip.show();
     }
    //}
-  }
 }
 
 void getButtonColor(){
