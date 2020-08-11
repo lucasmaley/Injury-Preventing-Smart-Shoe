@@ -1,0 +1,283 @@
+#include <MPU6050_tockn.h>
+#include <Wire.h>
+#include <SD.h>
+#include <SoftwareSerial.h> 
+#include <SPI.h>
+#include <TinyGPS.h>
+
+unsigned long timePassed = 0;
+unsigned long timer = 0;
+unsigned long extraTime = 0;
+double timerFast;
+double timerFaster;
+unsigned long lastUpdateTime = 0;
+unsigned int steps = 0;
+float BPM;
+float totalMilePace = 0;
+
+SoftwareSerial ss(5, 6);
+File myFile;
+File dataFile;
+TinyGPS gps;
+
+MPU6050 mpu6050(Wire);
+
+const int vibrationLeft = 8;
+const int vibrationRight = 4;
+const int SDPin = 10;
+const int switchPin = 9;
+const int middleFS = A0;
+const int leftFS = A1;
+const int rightFS = A2;
+const int bottomFS = A3;
+const int pulsePin = A7;
+
+#define DESTINATION_LAT 40.79348
+#define DESTINATION_LNG -73.70344
+
+void setup() {
+  pinMode(switchPin, INPUT_PULLUP);
+  pinMode(vibrationLeft, OUTPUT);
+  pinMode(vibrationRight, OUTPUT);
+  Serial.begin(9600);
+  ss.begin(9600);
+  Wire.begin();
+  mpu6050.begin();
+  pinMode(SDPin, OUTPUT);
+  if (!SD.begin(SDPin)) {
+    Serial.println("initialization failed!");
+    return;
+  }
+  Serial.println("initialization success");
+  mpu6050.calcGyroOffsets(true);
+ // mpu6050.setGyroOffsets(-1.40, -1.92, -1.18);
+  
+  myFile = SD.open("data1.txt", FILE_WRITE);
+  if(myFile){
+    myFile.println("Time Passed, Force Sensor 1, Force Sensor 2, Force Sensor 3, X Rotation, Y Rotation, Current Mile Pace, Average Mile Pace, Distance, Cumulative Elevation Gain, BPM");
+    myFile.close();
+  }
+  else {
+        Serial.println("error opening");
+      }
+ dataFile = SD.open("course1.csv", FILE_WRITE);
+      if (dataFile) {
+        dataFile.println("Longitude[deg],Latitude[deg],Altitude[m],Mile Pace");
+        dataFile.close();
+      }
+      else {
+        Serial.println("error opening");
+      }
+}
+
+void loop() {
+  int switchState;
+  short c_steps;
+  switchState = digitalRead(switchPin);
+  if (switchState == 0) {
+    while (ss.available() > 0)
+      gps.encode(ss.read());
+      
+    mpu6050.update();
+   if(millis() - timerFaster > 10){
+    timerFaster = millis();
+    if(millis() - timerFast > 500){
+      timerFast = millis();
+      c_steps = map(analogRead(middleFS), 1023, 250, 0, 1500);
+      if(c_steps < 200) {
+        steps += 2;
+    }
+      if(millis() - timer > 1000){
+        timer = millis();
+        timePassed = timer/1000 -1 - extraTime;
+        loggingData();
+        
+        if (millis() - lastUpdateTime >= 4000) {
+          lastUpdateTime = millis();
+          directionsToDestination();
+        }
+      }
+    }
+   }
+  }
+    else{
+      if (millis() - timer > 1000) {
+       Serial.println("No data is being logged");
+       timer = millis ();
+       extraTime = timer/1000 -1 - timePassed;
+    } 
+  }  
+}
+
+void loggingData(){
+  float milePace;
+  float milesph;
+  int mileHolder, totalMilePaceHolder, totalMilePaceHolder2;
+  float distance, averageMilePace, secondsPerMile;
+  float gyroX, gyroY;
+  short c1, c2, c3, c4;
+  short currentElevation, pastElevation, elevationGain;
+  long lat, lon;
+  int UpperThreshold = 513;
+  
+      c1 = map(analogRead(middleFS), 1023, 250, 0, 1800);
+      c2 = map(analogRead(leftFS), 1023, 250, 0, 1500);
+      c3 = map(analogRead(rightFS), 1023, 250, 0, 1500);
+      c4 = map(analogRead(bottomFS), 1023, 250, 0, 1500);
+
+      milesph = gps.f_speed_mph();
+      milePace = 60/milesph;
+      mileHolder = int(milePace);
+      milePace -= mileHolder;
+      totalMilePace += (mileHolder*60 + milePace);
+      secondsPerMile = totalMilePace / timePassed;
+      totalMilePaceHolder = int(secondsPerMile/60);
+      totalMilePaceHolder2 = (secondsPerMile/60 - totalMilePaceHolder)*60;
+      averageMilePace = (totalMilePaceHolder2/100) + totalMilePaceHolder;
+      distance = timePassed / (totalMilePaceHolder2 + (totalMilePaceHolder * 60));
+      
+      milePace = milePace*60 / 100;
+      milePace = milePace + mileHolder;
+
+      gyroX = mpu6050.getGyroX();
+      gyroY = mpu6050.getGyroY();
+
+      currentElevation = gps.altitude();
+      if (currentElevation > pastElevation){
+        elevationGain += (currentElevation - pastElevation);
+      }
+      pastElevation = currentElevation;
+      
+      gps.get_position(&lat, &lon);
+      
+      String datastring = "";
+      datastring+=String(lon,6); datastring+=",";
+      datastring+=String(lat,6); datastring+=",";
+      datastring+=String(gps.f_altitude(),6); datastring+=",";
+      datastring+=String(milePace,4); 
+      Serial.println(" ");
+      Serial.print("Seconds Since Start: ");Serial.println(timePassed);
+      Serial.print("Middle Force: ");Serial.print(c1);
+      Serial.print("\tTop Left Force: ");Serial.print(c2);
+      Serial.print("\tRight Force: ");Serial.print(c3);
+      Serial.print("\tBottom Force: ");Serial.println(c4);
+      Serial.print("GyroX: ");Serial.print(gyroX);
+      Serial.print("\t\tGyroY: ");Serial.println(gyroY);
+      Serial.print("Current Mile Pace: ");Serial.println(milePace);
+      Serial.print("Average Mile Pace: ");Serial.println(averageMilePace);
+      Serial.print("Distance traveled in miles: ");Serial.println(distance);
+      Serial.print("Steps: ");Serial.println(steps);
+      Serial.print("Cumulative Elevation Gain: ");Serial.println(elevationGain);
+      Serial.print("BPM: ");Serial.println(BPM);
+  
+      myFile = SD.open("data.txt", FILE_WRITE);
+      if(myFile){
+        myFile.print(timePassed);
+        myFile.print(",");
+        myFile.print(c1);
+        myFile.print(",");
+        myFile.print(c2);
+        myFile.print(",");
+        myFile.print(c3);
+        myFile.print(",");
+        myFile.print(c4);
+        myFile.print(",");
+        myFile.print(gyroX);
+        myFile.print(",");
+        myFile.print(gyroY);
+        myFile.print(",");
+        myFile.print(milePace);
+        myFile.print(",");
+        myFile.print(averageMilePace);
+        myFile.print(",");
+        myFile.print(distance);
+        myFile.print(",");
+        myFile.print(elevationGain);
+        myFile.print(",");
+        myFile.print(steps);
+        myFile.print(",");
+        myFile.println(BPM);
+        myFile.close();
+      }
+      else {
+        Serial.println("error opening data.txt");
+      }
+     dataFile = SD.open("course1.csv", FILE_WRITE);
+      if (dataFile) {
+        dataFile.println(datastring);
+        dataFile.close();
+      }
+      else {
+        Serial.println("error opening course1.csv");
+      }
+}
+
+
+void directionsToDestination() {
+  short vL, vR;
+  float flat, flon;
+  gps.f_get_position(&flat, &flon);
+    // Establish our current status
+  float distanceToDestination =  gps.distance_between(flat, flon, DESTINATION_LAT, DESTINATION_LNG);
+  float courseToDestination = gps.course_to(flat, flon, DESTINATION_LAT, DESTINATION_LNG);
+  short courseChangeNeeded = (int)(360 + courseToDestination - gps.course()) % 360;
+  
+  if(distanceToDestination > 20.0){
+    if (courseChangeNeeded >= 350 || courseChangeNeeded < 10)   {   
+      analogWrite(vibrationLeft, 0);
+      analogWrite(vibrationRight, 0);
+    }
+    else if (courseChangeNeeded >= 260 || courseChangeNeeded < 350) { 
+      vL =  map(courseChangeNeeded, 260, 350, 255, 20);
+      analogWrite(vibrationLeft, vL);
+      analogWrite(vibrationRight, 0); 
+    }
+    else if (courseChangeNeeded >= 10 && courseChangeNeeded < 100) { 
+      vR = map(courseChangeNeeded, 10, 100, 20, 255);
+      analogWrite(vibrationLeft, 0);
+      analogWrite(vibrationRight, vR); 
+    }
+    else{
+      analogWrite(vibrationLeft, 120);
+      analogWrite(vibrationRight, 120); 
+    }
+  }
+ else{
+    analogWrite(vibrationLeft, 255);
+    analogWrite(vibrationRight, 255);
+ }
+}
+
+void bpmFinder(){
+  int UpperThreshold = 513;
+  int LowerThreshold = 505;
+  bool IgnoreReading = false;
+  bool FirstPulseDetected = false;
+  unsigned long previousMillis = 0;
+  unsigned long previousMillis2 = 0;
+  unsigned long FirstPulseTime = 0;
+  unsigned long SecondPulseTime = 0;
+  unsigned long PulseInterval = 0;
+  int reading  = analogRead(pulsePin); 
+
+  if(reading > UpperThreshold && IgnoreReading == false){
+      if(FirstPulseDetected == false){
+        FirstPulseTime = millis();
+        FirstPulseDetected = true;
+      }
+      else{
+        SecondPulseTime = millis();
+        PulseInterval = SecondPulseTime - FirstPulseTime;
+        FirstPulseTime = SecondPulseTime;
+      }
+      IgnoreReading = true;
+    }
+
+    // Heart beat trailing edge detected.
+    if(reading < LowerThreshold && IgnoreReading == true){
+      IgnoreReading = false;
+    }  
+
+    // Calculate Beats Per Minute.
+    BPM = (1.0/PulseInterval) * 60.0 * 1000;
+}
